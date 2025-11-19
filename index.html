@@ -26,14 +26,16 @@
 <body>
   <script type="module">
     import { init } from "easy-three";
-    const { camera, create, animate, controls, THREE, scene, helper } = init();
+    const { camera, create, animate, controls, THREE, scene, helper, load } = init();
 
     controls.connect()
-    camera.position.set(0, 2, 3)
-    helper.axes();
-    helper.grid();
+    camera.position.set(0, 3, 4)
+    // helper.axes();
+    // helper.grid();
     create.ambientLight()
     create.directionalLight()
+    load.background("https://masabando.github.io/easy-three/texture/hdr/kloofendal_48d_partly_cloudy_puresky_1k.hdr");
+    const ocean = create.ocean("https://masabando.github.io/easy-three/texture/water/NormalMap-1.jpg");
 
     // [コーヒーカップ作成] ==============================================
     // カップ底の半径
@@ -54,14 +56,16 @@
       const cup = new THREE.Group();
 
       // 材質
-      const material = new THREE.MeshStandardMaterial({
+      const material = new THREE.MeshPhysicalMaterial({
         color: 0x777777, // 色
+        metalness: 0.5, // 金属度
+        roughness: 0.1, // 粗さ
         side: THREE.DoubleSide // 両面表示
       });
 
       // カップの底面
       // 円形のジオメトリを作成
-      const circleGeo = new THREE.CircleGeometry(cupRadius, 32);
+      const circleGeo = new THREE.CircleGeometry(cupRadius, 64);
       // メッシュを作成
       const circle = new THREE.Mesh(circleGeo, material);
       // X軸に90度回転させて水平に配置
@@ -69,7 +73,7 @@
 
       // カップ本体
       // 円柱のジオメトリを作成
-      const cylinderGeo = new THREE.CylinderGeometry(cupRadius, cupRadius, cupHeight, 32, 1, true);
+      const cylinderGeo = new THREE.CylinderGeometry(cupRadius, cupRadius, cupHeight, 64, 1, true);
       // メッシュを作成
       const cylinder = new THREE.Mesh(cylinderGeo, material);
       // Y軸にカップ高さの半分だけ上に移動
@@ -97,6 +101,7 @@
 
     // コーヒーカップを作成
     const coffeeCup = createCoffeeCup();
+    coffeeCup.position.y = 0.5;
     // シーンに追加
     scene.add(coffeeCup);
 
@@ -171,6 +176,7 @@
     });
 
     animate(({ delta, time }) => {
+      ocean.update(delta)
     })
   </script>
   <!-- スライダー -->
