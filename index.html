@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>easy-three template</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.178.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.178.0/examples/jsm/",
+        "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3/lib/three-vrm.module.min.js",
+        "easy-three": "https://cdn.jsdelivr.net/gh/masabando/easy-three@1.10.0/dist/easy-three.js"
+      }
+    }
+  </script>
+  <!-- 以下の2つで Bootstrap を読み込んでる -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
+    crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <script type="module">
+    import { init } from "easy-three";
+    const { camera, create, animate, controls, THREE, scene, helper } = init();
+
+    controls.connect()
+    camera.position.set(0, 2, 3)
+    helper.axes();
+    helper.grid();
+    create.ambientLight()
+    create.directionalLight()
+
+    // [コーヒーカップ作成] ==============================================
+    // カップ底の半径
+    const cupRadius = 0.7;
+    // カップの高さ
+    const cupHeight = 1.5;
+    // 取っ手の半径
+    const handleRadius = 0.4;
+    // 取っ手のチューブの半径
+    const handleTubeRadius = 0.1;
+    // 取っ手の弧の角度
+    const handleArc = Math.PI * 2;
+
+    // コーヒーカップを作成する関数
+    function createCoffeeCup() {
+
+      // 各パーツをまとめるためのGroup
+      const cup = new THREE.Group();
+
+      // 材質
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x777777, // 色
+        side: THREE.DoubleSide // 両面表示
+      });
+
+      // カップの底面
+      // 円形のジオメトリを作成
+      const circleGeo = new THREE.CircleGeometry(cupRadius, 32);
+      // メッシュを作成
+      const circle = new THREE.Mesh(circleGeo, material);
+      // X軸に90度回転させて水平に配置
+      circle.rotation.x = Math.PI / 2;
+
+      // カップ本体
+      // 円柱のジオメトリを作成
+      const cylinderGeo = new THREE.CylinderGeometry(cupRadius, cupRadius, cupHeight, 32, 1, true);
+      // メッシュを作成
+      const cylinder = new THREE.Mesh(cylinderGeo, material);
+      // Y軸にカップ高さの半分だけ上に移動
+      cylinder.position.y = cupHeight / 2;
+
+      // 取っ手
+      // トーラスのジオメトリを作成 (角度はhandleArc分だけ)
+      const handleGeo = new THREE.TorusGeometry(handleRadius, handleTubeRadius, 16, 100, handleArc);
+      // メッシュを作成
+      const handle = new THREE.Mesh(handleGeo, material);
+      // 取っ手の位置と向きを調整
+      handle.position.set(cupRadius, cupHeight / 2, 0);
+      handle.rotation.z = -Math.PI / 2;
+
+      // 各パーツに名前を設定
+      circle.name = "cup_bottom";
+      cylinder.name = "cup_body";
+      handle.name = "cup_handle";
+      // 各パーツをグループに追加
+      cup.add(circle);
+      cup.add(cylinder);
+      cup.add(handle);
+      return cup;
+    }
+
+    // コーヒーカップを作成
+    const coffeeCup = createCoffeeCup();
+    // シーンに追加
+    scene.add(coffeeCup);
+
+    // [コーヒーカップ本体部分を潰す] ==============================================
+    // cup_bodyだけ取得して，各点をゲット
+    const cupBody = coffeeCup.getObjectByName("cup_body").geometry.attributes.position
+    // cup_bodyの各点の初期位置を保存
+    const initialCupBodyPos = new Float32Array(cupBody.array);
+
+    // cup_bodyを変形させる関数
+    function deformCupBody(time, startTime, endTime) {
+      if (time < startTime) return;
+      const vertexCount = cupBody.count;
+      const dt = endTime - startTime;
+
+      for (let i = 0; i < vertexCount; i++) {
+        const y = cupBody.getY(i); // Y座標を取得
+        // y方向に潰す
+        cupBody.setY(i, THREE.MathUtils.lerp(initialCupBodyPos[i * 3 + 1], 0, Math.min(time - startTime, dt) / dt));
+      }
+      cupBody.needsUpdate = true; // ジオメトリの更新を通知
+      if (time >= endTime) {
+        coffeeCup.getObjectByName("cup_body").visible = false; // endTimeに達したら非表示に
+      } else {
+        coffeeCup.getObjectByName("cup_body").visible = true; // それ以外は表示
+      }
+    }
+
+    // [コーヒーカップ底部分の移動] ==============================================
+    // cup_bottomだけ取得して，各点をゲット
+    const cupBottom = coffeeCup.getObjectByName("cup_bottom").geometry.attributes.position
+    // cup_bottomの各点の初期位置を保存
+    const initialCupBottomPos = new Float32Array(cupBottom.array);
+
+    // cup_bottomを変形させる関数
+    function deformCupBottom(time, startTime, endTime) {
+      if (time < startTime) return;
+      const vertexCount = cupBottom.count;
+      const dt = endTime - startTime;
+      for (let i = 0; i < vertexCount; i++) {
+        const z = cupBottom.getZ(i);
+        cupBottom.setZ(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 2], -cupHeight/2, Math.min(time - startTime, dt) / dt));
+      }
+      cupBottom.needsUpdate = true; // ジオメトリの更新を通知
+    }
+
+    // [コーヒーカップ底部分を縮退させる] ==============================================
+    function shrinkCupBottom(time, startTime, endTime) {
+      if (time < startTime) return;
+      const vertexCount = cupBottom.count;
+      const dt = endTime - startTime;
+      for (let i = 0; i < vertexCount; i++) {
+        const scale = 1 - Math.min(time - startTime, dt) / dt;
+        cupBottom.setX(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 0], cupRadius - handleRadius + handleTubeRadius, Math.min(time - startTime, dt) / dt));
+        cupBottom.setY(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 1], 0, Math.min(time - startTime, dt) / dt));
+      }
+      cupBottom.needsUpdate = true; // ジオメトリの更新を通知
+      if (time >= endTime) {
+        coffeeCup.getObjectByName("cup_bottom").visible = false; // endTimeに達したら非表示に
+      } else {
+        coffeeCup.getObjectByName("cup_bottom").visible = true; // それ以外は表示
+      }
+    }
+
+
+    // スライダーの値に応じてアニメーションを制御
+    document.querySelector("#slider").addEventListener("input", (e) => {
+      const t = e.target.value / 100 * 10; // 0〜10秒にマッピング
+      deformCupBody(t, 0, 5); // 0〜5秒で潰す
+      deformCupBottom(t, 0, 5); // 0〜5秒で移動
+      shrinkCupBottom(t, 5, 10); // 5〜10秒で縮退させる
+    });
+
+    animate(({ delta, time }) => {
+    })
+  </script>
+  <!-- スライダー -->
+  <input type="range" class="form-range" id="slider" value="0" style="position: fixed; top: 30px; left: 30px; width: 200px;">
+</body>
+
+</html>
