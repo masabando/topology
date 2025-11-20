@@ -26,16 +26,19 @@
 <body>
   <script type="module">
     import { init } from "easy-three";
-    const { camera, create, animate, controls, THREE, scene, helper, load } = init();
+    const { camera, create, animate, controls, THREE, scene, helper, load, renderer } = init();
 
     controls.connect()
-    camera.position.set(0, 3, 4)
+    camera.position.set(0, 4, 4)
     // helper.axes();
     // helper.grid();
     create.ambientLight()
     create.directionalLight()
     load.background("https://masabando.github.io/easy-three/texture/hdr/kloofendal_48d_partly_cloudy_puresky_1k.hdr");
     const ocean = create.ocean("https://masabando.github.io/easy-three/texture/water/NormalMap-1.jpg");
+
+    // クリップを有効にする
+    renderer.localClippingEnabled = true;
 
     // [コーヒーカップ作成] ==============================================
     // カップ底の半径
@@ -48,6 +51,11 @@
     const handleTubeRadius = 0.1;
     // 取っ手の弧の角度
     const handleArc = Math.PI * 2;
+    // コーヒーカップ自体をどれだけ上に持ち上げるか
+    const cupLift = 0.5;
+
+    // 取手のクリップ平面
+    const clipPlane = new THREE.Plane(new THREE.Vector3(1, 0, 0), -cupRadius);
 
     // コーヒーカップを作成する関数
     function createCoffeeCup() {
@@ -55,12 +63,22 @@
       // 各パーツをまとめるためのGroup
       const cup = new THREE.Group();
 
-      // 材質
+      // 材質 (取手以外)
       const material = new THREE.MeshPhysicalMaterial({
         color: 0x777777, // 色
         metalness: 0.5, // 金属度
         roughness: 0.1, // 粗さ
         side: THREE.DoubleSide // 両面表示
+      });
+      // 材質 (取手)
+      const handleMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0x777777, // 色
+        metalness: 0.5, // 金属度
+        roughness: 0.1, // 粗さ
+        side: THREE.DoubleSide, // 両面表示
+        clippingPlanes: [clipPlane],
+        clipShadows: true,
+        alphaToCoverage: true,
       });
 
       // カップの底面
@@ -83,7 +101,7 @@
       // トーラスのジオメトリを作成 (角度はhandleArc分だけ)
       const handleGeo = new THREE.TorusGeometry(handleRadius, handleTubeRadius, 16, 100, handleArc);
       // メッシュを作成
-      const handle = new THREE.Mesh(handleGeo, material);
+      const handle = new THREE.Mesh(handleGeo, handleMaterial);
       // 取っ手の位置と向きを調整
       handle.position.set(cupRadius, cupHeight / 2, 0);
       handle.rotation.z = -Math.PI / 2;
@@ -101,7 +119,7 @@
 
     // コーヒーカップを作成
     const coffeeCup = createCoffeeCup();
-    coffeeCup.position.y = 0.5;
+    coffeeCup.position.y = cupLift;
     // シーンに追加
     scene.add(coffeeCup);
 
@@ -150,13 +168,16 @@
 
     // [コーヒーカップ底部分を縮退させる] ==============================================
     function shrinkCupBottom(time, startTime, endTime) {
-      if (time < startTime) return;
       const vertexCount = cupBottom.count;
       const dt = endTime - startTime;
+      let t = 0;
+      if (time > startTime) {
+        t = Math.min(time - startTime, dt) / dt;
+      }
       for (let i = 0; i < vertexCount; i++) {
-        const scale = 1 - Math.min(time - startTime, dt) / dt;
-        cupBottom.setX(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 0], cupRadius - handleRadius + handleTubeRadius, Math.min(time - startTime, dt) / dt));
-        cupBottom.setY(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 1], 0, Math.min(time - startTime, dt) / dt));
+        // cupBottom.setX(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 0], cupRadius - handleRadius + handleTubeRadius, t));
+        cupBottom.setX(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 0], cupRadius, t));
+        cupBottom.setY(i, THREE.MathUtils.lerp(initialCupBottomPos[i * 3 + 1], 0, t));
       }
       cupBottom.needsUpdate = true; // ジオメトリの更新を通知
       if (time >= endTime) {
@@ -166,14 +187,62 @@
       }
     }
 
+    // [取手の移動とクリッピング] ==============================================
+    function moveCupHandle(time, startTime, endTime) {
+      const handle = coffeeCup.getObjectByName("cup_handle");
+      const dt = endTime - startTime;
+      let t = 0;
+      if (time > startTime) {
+        t = Math.min(time - startTime, dt) / dt;
+      }
+      handle.position.x = THREE.MathUtils.lerp(cupRadius, cupRadius + handleRadius - handleTubeRadius, t);
+    }
+    // クリップ平面の移動
+    function updateClipPlane(time, startTime, endTime) {
+      const dt = endTime - startTime;
+      let t = 0;
+      if (time > startTime) {
+        t = Math.min(time - startTime, dt) / dt;
+      }
+      clipPlane.constant = - THREE.MathUtils.lerp(cupRadius, cupRadius - handleTubeRadius*2, t)
+    }
 
     // スライダーの値に応じてアニメーションを制御
     document.querySelector("#slider").addEventListener("input", (e) => {
       const t = e.target.value / 100 * 10; // 0〜10秒にマッピング
-      deformCupBody(t, 0, 5); // 0〜5秒で潰す
-      deformCupBottom(t, 0, 5); // 0〜5秒で移動
-      shrinkCupBottom(t, 5, 10); // 5〜10秒で縮退させる
+      deformCupBody(t, 3, 6); // 3〜6秒で潰す
+      deformCupBottom(t, 3, 6); // 3〜6秒で移動
+      shrinkCupBottom(t, 6, 10); // 6〜10秒で縮退させる
+      moveCupHandle(t, 0, 3); // 0〜3秒で移動
+      updateClipPlane(t, 3, 5); // 3〜5秒でクリップ平面を移動
+      moveWaterInCup(t, 3, 5); // 0〜5秒で水を移動
     });
+
+    // カップに水入れちゃおっかな〜 (素のThree.jsだとこのコードでは無理)
+    const water = create.water(
+      "https://masabando.github.io/easy-three/texture/water/NormalMap-1.jpg",
+      "https://masabando.github.io/easy-three/texture/water/NormalMap-2.jpg",
+      {
+        geometry: new THREE.CircleGeometry(cupRadius, 64),
+        position: [0, cupHeight*0.7 + cupLift, 0],
+        scale: 0.1,
+      }
+    )
+    const waterInitialPosY = water.position.y;
+    function moveWaterInCup(time, startTime, endTime) {
+      const dt = endTime - startTime;
+      let t = 0;
+      if (time > startTime) {
+        t = Math.min(time - startTime, dt) / dt;
+      }
+      water.position.y = THREE.MathUtils.lerp(waterInitialPosY, cupHeight/2 + cupLift, t);
+      if (time >= endTime) {
+        water.visible = false; // endTimeに達したら非表示に
+      } else {
+        water.visible = true; // それ以外は表示
+      }
+    }
+
 
     animate(({ delta, time }) => {
       ocean.update(delta)
